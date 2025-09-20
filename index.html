@@ -65,25 +65,11 @@
                 <svg class="w-12 h-12 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
                 </svg>
-                <p class="text-gray-500 font-medium">Drag & drop an image here</p>
+                <p class="text-gray-500 font-medium">Drag & drop images here</p>
                 <p class="text-gray-400 text-sm">or click to browse</p>
-                <input type="file" id="remover-file-input" class="hidden" accept="image/*">
+                <input type="file" id="remover-file-input" class="hidden" accept="image/*" multiple>
             </div>
 
-            <!-- Image Preview & Result -->
-            <div id="remover-image-container" class="space-y-4">
-                <div id="remover-image-previews" class="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4 justify-center items-center hidden">
-                    <div class="w-full md:w-1/2 p-4 bg-gray-100 rounded-lg shadow-inner">
-                        <p class="text-gray-500 font-medium mb-2">Original Image</p>
-                        <img id="original-image" class="w-full h-auto rounded-md" alt="Original Image">
-                    </div>
-                    <div class="w-full md:w-1/2 p-4 bg-gray-100 rounded-lg shadow-inner">
-                        <p class="text-gray-500 font-medium mb-2">Edited Image</p>
-                        <img id="edited-image" class="w-full h-auto rounded-md" alt="Edited Image">
-                    </div>
-                </div>
-            </div>
-            
             <!-- Action Buttons and Status -->
             <div class="flex flex-col space-y-4">
                 <button id="process-button" class="cta-button bg-green-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-green-700 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 flex items-center justify-center" disabled>
@@ -91,11 +77,15 @@
                     <div id="loading-indicator" class="w-5 h-5 border-2 rounded-full border-solid border-gray-200 ml-2 hidden"></div>
                 </button>
                 <a id="remover-download-link" class="cta-button bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-blue-700 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 hidden" download="transparent_image.png">
-                    Download Image
+                    Download All Images
                 </a>
             </div>
 
             <div id="remover-message-box" class="mt-4 text-sm text-red-500"></div>
+
+            <!-- Image Previews Container -->
+            <div id="remover-image-previews" class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4 hidden"></div>
+
         </div>
 
         <!-- Image Resizer Section -->
@@ -149,8 +139,6 @@
         // Background Remover Elements
         const removerDropZone = document.getElementById('remover-drop-zone');
         const removerFileInput = document.getElementById('remover-file-input');
-        const originalImage = document.getElementById('original-image');
-        const editedImage = document.getElementById('edited-image');
         const removerImagePreviews = document.getElementById('remover-image-previews');
         const processButton = document.getElementById('process-button');
         const removerButtonText = document.getElementById('remover-button-text');
@@ -171,8 +159,8 @@
         const resizerMessageBox = document.getElementById('resizer-message-box');
         
         // State
-        let uploadedFile = null;
         let uploadedFiles = [];
+        let processedImages = [];
         let resizedImageBlobs = [];
 
         // Helper Functions
@@ -221,7 +209,7 @@
                 const files = e.dataTransfer.files;
                 if (files.length > 0) {
                     if (multiple) {
-                        handleMultipleFilesUpload(files);
+                        handleMultipleFilesUpload(files, 'remover');
                     } else {
                         handleSingleFileUpload(files[0]);
                     }
@@ -234,52 +222,78 @@
                 const files = e.target.files;
                 if (files.length > 0) {
                     if (multiple) {
-                        handleMultipleFilesUpload(files);
+                        handleMultipleFilesUpload(files, 'remover');
                     } else {
                         handleSingleFileUpload(files[0]);
                     }
                 }
             });
         }
+        
+        function handleMultipleFilesUpload(files, section) {
+            uploadedFiles = Array.from(files);
+            processedImages = [];
+            const previewsContainer = section === 'remover' ? removerImagePreviews : resizerImagePreviews;
+            const processBtn = section === 'remover' ? processButton : resizeButton;
 
-        // Background Remover Logic
-        function handleSingleFileUpload(file) {
-            uploadedFile = file;
-            if (!file || !file.type.startsWith('image/')) {
-                showMessage('Please upload a valid image file.', 'error', 'remover');
-                processButton.disabled = true;
+            if (uploadedFiles.length === 0) {
+                showMessage('No images selected.', 'error', section);
+                processBtn.disabled = true;
                 return;
             }
 
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                originalImage.src = e.target.result;
-                editedImage.src = '';
-                removerImagePreviews.classList.remove('hidden');
-                processButton.disabled = false;
-                removerDownloadLink.classList.add('hidden');
-                showMessage('', 'info', 'remover');
-            };
-            reader.readAsDataURL(file);
+            previewsContainer.innerHTML = '';
+            previewsContainer.classList.remove('hidden');
+            processBtn.disabled = false;
+            removerDownloadLink.classList.add('hidden');
+            showMessage(`Loaded ${uploadedFiles.length} image(s).`, 'info', section);
+
+            uploadedFiles.forEach(file => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const imgPreviewCard = document.createElement('div');
+                    imgPreviewCard.className = 'w-full p-4 bg-gray-100 rounded-lg shadow-inner flex flex-col items-center justify-center space-y-2';
+                    imgPreviewCard.innerHTML = `
+                        <p class="text-gray-500 font-medium text-center truncate w-full mb-2">${file.name}</p>
+                        <div class="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4 w-full">
+                            <div class="w-full md:w-1/2">
+                                <p class="text-gray-500 text-xs mb-1">Original</p>
+                                <img src="${e.target.result}" class="w-full h-auto rounded-md" alt="Original Image">
+                            </div>
+                            <div class="w-full md:w-1/2">
+                                <p class="text-gray-500 text-xs mb-1">Edited</p>
+                                <img id="edited-image-${file.name}" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23e5e7eb' d='M0 0h24v24H0z'/%3E%3C/svg%3E" class="w-full h-auto rounded-md animate-pulse" alt="Edited Image">
+                            </div>
+                        </div>
+                    `;
+                    previewsContainer.appendChild(imgPreviewCard);
+                };
+                reader.readAsDataURL(file);
+            });
         }
 
         async function removeBackground() {
-            if (!uploadedFile) {
-                showMessage('Please upload an image first.', 'error', 'remover');
+            if (uploadedFiles.length === 0) {
+                showMessage('Please upload images first.', 'error', 'remover');
                 return;
             }
 
             processButton.disabled = true;
             removerButtonText.textContent = 'Processing...';
             loadingIndicator.classList.remove('hidden');
-            showMessage('Processing image...', 'info', 'remover');
+            removerDownloadLink.classList.add('hidden');
             
+            showMessage('Processing images...', 'info', 'remover');
+
+            processedImages = [];
+
             try {
-                const reader = new FileReader();
-                reader.readAsDataURL(uploadedFile);
-                reader.onloadend = async () => {
+                const processPromises = uploadedFiles.map(async (file) => {
+                    const reader = new FileReader();
+                    reader.readAsDataURL(file);
+                    await new Promise(resolve => reader.onloadend = resolve);
                     const base64Data = reader.result.split(',')[1];
-                    const prompt = "Isolate the pair of earrings from the image. Remove the white card, the black-bordered frame with 'handmade with love' text, and the background. The final image should have only the earrings with a completely transparent background.";
+                    const prompt = "Isolate the main subject from the image and make the background transparent. Do not include any text or additional elements.";
                     const payload = {
                         contents: [{
                             role: "user",
@@ -316,48 +330,66 @@
                             }
                         }
                     };
-                    
+
                     const result = await makeApiCallWithBackoff();
                     const base64DataResult = result?.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
                     
                     if (base64DataResult) {
                         const imageUrl = `data:image/png;base64,${base64DataResult}`;
-                        editedImage.src = imageUrl;
-                        removerDownloadLink.href = imageUrl;
-                        removerDownloadLink.classList.remove('hidden');
-                        showMessage('Background removed successfully!', 'success', 'remover');
-                    } else {
-                        showMessage('Failed to remove background. Please try again.', 'error', 'remover');
+                        const editedImageElement = document.getElementById(`edited-image-${file.name}`);
+                        if (editedImageElement) {
+                            editedImageElement.src = imageUrl;
+                            editedImageElement.classList.remove('animate-pulse');
+                        }
+                        return { name: file.name, url: imageUrl };
                     }
+                    return null;
+                });
+                
+                processedImages = await Promise.all(processPromises);
+                processedImages = processedImages.filter(img => img !== null);
 
-                    processButton.disabled = false;
-                    removerButtonText.textContent = 'Remove Background';
-                    loadingIndicator.classList.add('hidden');
-                };
+                if (processedImages.length > 0) {
+                    removerDownloadLink.classList.remove('hidden');
+                    showMessage(`Background removed for ${processedImages.length} of ${uploadedFiles.length} images.`, 'success', 'remover');
+                } else {
+                    showMessage('Failed to process any images. Please try again.', 'error', 'remover');
+                }
+
             } catch (error) {
                 console.error(error);
                 showMessage(`An error occurred: ${error.message}`, 'error', 'remover');
+            } finally {
                 processButton.disabled = false;
                 removerButtonText.textContent = 'Remove Background';
                 loadingIndicator.classList.add('hidden');
             }
         }
 
-        // Image Resizer Logic
-        function handleMultipleFilesUpload(files) {
-            uploadedFiles = Array.from(files);
-            if (uploadedFiles.length === 0) {
-                showMessage('No images selected.', 'error', 'resizer');
-                resizeButton.disabled = true;
+        function downloadAllImages() {
+            if (processedImages.length === 0) {
+                showMessage('No images to download.', 'error', 'remover');
                 return;
             }
-            resizeButton.disabled = false;
-            downloadAllLink.classList.add('hidden');
-            resizerImagePreviews.innerHTML = '';
-            resizedImageBlobs = [];
-            showMessage(`Loaded ${uploadedFiles.length} image(s).`, 'info', 'resizer');
+
+            processedImages.forEach(image => {
+                const a = document.createElement('a');
+                a.href = image.url;
+                a.download = `transparent_${image.name.replace(/\.[^/.]+$/, "")}.png`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            });
+            showMessage('Downloading images...', 'info', 'remover');
         }
         
+        // Image Resizer Logic (unchanged)
+        function handleSingleFileUpload(file) {
+            // This function is for single file uploads, not used in the current multiple file logic.
+            // Keeping it for potential future single-file modes.
+            console.log('Single file upload handler called.');
+        }
+
         async function resizeImages() {
             if (uploadedFiles.length === 0) {
                 showMessage('Please upload images first.', 'error', 'resizer');
@@ -423,7 +455,7 @@
             resizeLoadingIndicator.classList.add('hidden');
         }
 
-        async function downloadAllImages() {
+        async function downloadAllResizedImages() {
             if (resizedImageBlobs.length === 0) {
                 showMessage('No images to download.', 'error', 'resizer');
                 return;
@@ -444,11 +476,12 @@
         }
         
         // Event Listeners
-        setupDropZone(removerDropZone, removerFileInput, false);
+        setupDropZone(removerDropZone, removerFileInput, true);
         setupDropZone(resizerDropZone, resizerFileInput, true);
         processButton.addEventListener('click', removeBackground);
+        removerDownloadLink.addEventListener('click', downloadAllImages);
         resizeButton.addEventListener('click', resizeImages);
-        downloadAllLink.addEventListener('click', downloadAllImages);
+        downloadAllLink.addEventListener('click', downloadAllResizedImages);
 
     </script>
 
